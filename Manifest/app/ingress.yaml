@@ -1,0 +1,14 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: irohaboard
+  namespace: irohaboard
+spec:
+  rules:
+  - host: gateway.docker.internal
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: irohaboard-service
+          servicePort: 80
