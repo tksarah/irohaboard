@@ -1,0 +1,133 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: irohaboard 
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: iroha-db-secrets
+  namespace: irohaboard
+type: Opaque
+data:
+  mysqlrootpassword: cm9vdA==
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+  labels:
+    type: local
+spec:
+  storageClassName: localdisk
+  persistentVolumeReclaimPolicy: Delete
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /var/tmp/mysql-pv
+    type: DirectoryOrCreate
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+  namespace: irohaboard
+spec:
+  storageClassName: localdisk
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+  namespace: irohaboard
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mysql
+        tier: backend
+    spec:
+      containers:
+      - name: mysql
+        image: tksarah/irohadb:1.0
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: iroha-db-secrets
+              key: mysqlrootpassword
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: irohaboard
+spec:
+  ports:
+    - port: 3306
+      protocol: TCP
+      targetPort: 3306
+  selector:
+    app: mysql
+    tier: backend
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: irohaboard-deployment
+  namespace: irohaboard
+spec:
+  replicas: 
+  template:
+    metadata:
+      labels:
+        app: irohaboard
+        tier: frontend
+    spec:
+      containers:
+      - name: irohaboard
+        image: tksarah/irohaboard:0.9.18
+        ports:
+        - containerPort: 80
+        env:
+        - name: MYSQL_HOST
+          value: mysql-service
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: iroha-db-secrets
+              key: mysqlrootpassword
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: irohaboard-service
+  namespace: irohaboard
+  labels:
+    app: irohaboard
+spec:
+  type: NodePort
+  ports:
+  - name: http
+    port: 80
+  selector:
+    app: irohaboard
+    tier: frontend
